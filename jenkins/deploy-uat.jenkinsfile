@@ -1,0 +1,34 @@
+#!groovy
+@Library('Openshift pipeline library') _
+
+node('openshift4-prg') {
+  withITSOpenshift('svc-its-sia-test-dmz-test-prg', 'PRG-TESTV4') {
+    def imageNameRef = 'latest';
+    echo "imageNameRef name ${imageNameRef}"
+
+    stage('Build image') {
+      openshift.withProject( 'its-sia-test' ) {
+        def bc = openshift.selector("bc/fallback-ui-next")
+        def bcObj = bc.object()
+        
+        bcObj.spec.source.git.ref = 'master'
+        bcObj.spec.output.to.name = 'fallback-ui-next:' + imageNameRef
+        openshift.apply(bcObj)
+        echo "Start the build of ${bcObj.spec.output.to.name}"
+        bc.describe()
+        def buildres = bc.startBuild()
+        buildres.logs('-f')
+      }
+    }
+
+    stage('Deploy to Test') {
+      openshift.withProject( 'its-sia-test' ) {
+        def dc = openshift.selector("deployment/fallback-ui-next")
+        def dcObj = dc.object()
+        dc.describe()
+        dcObj.spec.template.spec.containers[0].image = "image-registry.openshift-image-registry.svc:5000/its-sia-test/fallback-ui-next:${imageNameRef}"
+        openshift.apply(dcObj) 
+      }
+    }
+  }
+}
